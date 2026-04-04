@@ -1,0 +1,4 @@
+TestFiles/*
+__pycache__/*
+main_content.bin
+main_content_utf16.txt
