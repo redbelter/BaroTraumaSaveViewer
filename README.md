@@ -5,6 +5,28 @@ A powerful Python-based tool for analyzing and extracting data from Barotrauma s
 ![Python](https://img.shields.io/badge/python-3.8+-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
+## � Project Structure
+
+```
+reverse-baro/
+├── src/                    # Source code
+│   ├── __init__.py
+│   ├── save_file_viewer.py # Main GUI application
+│   └── save_compare_tool.py # Save comparison tool
+├── tests/                  # Test files
+│   ├── __init__.py
+│   └── test_save_files.py
+├── data/                   # Test save files
+│   ├── samples/           # Sample files for demonstration
+│   └── potato 2.save      # Main test file
+├── docs/                   # Documentation and analysis
+│   ├── README.md          # This file
+│   ├── SAVE_FILE_FORMAT.md
+│   └── analysis/          # Detailed analysis reports
+├── requirements.txt        # Python dependencies
+└── LICENSE
+```
+
 ## 🚀 Features
 
 - **Browse & Select Save Files** - Easy file dialog for selecting `.save` files from any location
@@ -37,16 +59,23 @@ A powerful Python-based tool for analyzing and extracting data from Barotrauma s
 
 1. Clone or download this repository
 2. Ensure Python 3.8+ is installed on your system
-3. Run the application:
-
-```bash
-python save_file_viewer.py
-```
+3. (Optional) Create a virtual environment:
+   ```bash
+   python -m venv .venv
+   .venv\Scripts\activate
+   ```
+4. Run the application:
+   ```bash
+   python src/save_file_viewer.py
+   ```
 
 ## 🔍 Usage
 
 ### Opening a Save File
-1. Launch the application
+1. Launch the application:
+   ```bash
+   python src/save_file_viewer.py
+   ```
 2. Click **File → Open Save File** to browse and select a `.save` file
 3. Or click the "Load File" button after selecting a file
 
@@ -93,9 +122,44 @@ Characters are stored in duffelbag items with the following data:
 }
 ```
 
+## 🧪 Running Tests
+
+Run the test suite to verify functionality:
+
+```bash
+python -m unittest tests/test_save_files.py
+```
+
+## 📖 Documentation
+
+- **[Save File Format](SAVE_FILE_FORMAT.md)** - Detailed explanation of Barotrauma's save file structure
+- **[Analysis Reports](analysis/)** - Detailed comparisons and analysis of save files
+
+## 🏗️ Technical Details
+
+### Save File Structure
+```
+[File Header] → [Gzip Stream #1] → [Data] → [Gzip Stream #2] → ...
+     |                    |                   |
+   UTF-16             Deflate            Deflate
+  filename          (XML content)       (XML content)
+```
+
+### Character Extraction
+Characters are stored in duffelbag items with the following data:
+```python
+{
+    'id': int,
+    'name': str,
+    'job': str,
+    'condition': "XX.XX%",  # Health condition percentage
+    'rect': str            # Position coordinates
+}
+```
+
 ## 📝 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](../LICENSE) file for details.
 
 ## 🙏 Acknowledgments
 
@@ -104,21 +168,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-*Built with ❤️ using Python and Tkinter*
-
-## 📂 Project Structure
-
-```
-BaroTraumaSaveViewer/
-├── save_file_viewer.py        # Main application (GUI tool)
-├── save_compare_tool.py       # Compare multiple save files
-├── SAVE_FILE_FORMAT.md        # Technical documentation
-├── README.md                  # This file
-└── LICENSE                    # MIT License
-
-# Development/Analysis Scripts (can be removed):
-├── analyze_*.py               # Various analysis scripts
-├── check_*.py                 # Validation scripts  
+*Built with ❤️ using Python and Tkinter*  
 ├── test_*.py                  # Test scripts
 ├── extract_*.py               # Extraction utilities
 ├── compare_*.py               # Comparison tools

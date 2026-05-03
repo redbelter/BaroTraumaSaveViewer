@@ -83,10 +83,18 @@ class SaveCompareTool(tk.Tk):
         self.title("Barotrauma Save Compare Tool")
         self.geometry("1000x700")
         
-        # Find all save files
-        self.save_files = sorted([str(p) for p in Path('.').glob('*.save')])
-        newer_saves = list(Path('newer-saves').glob('*.save')) if Path('newer-saves').exists() else []
-        self.save_files.extend([str(p) for p in newer_saves])
+        # Find all save files in data directory
+        data_dir = Path(__file__).parent.parent / 'data'
+        self.save_files = sorted([str(p) for p in data_dir.glob('*.save')])
+        
+        # Also check subdirectories
+        for subdir in ['samples', 'original']:
+            subdir_path = data_dir / subdir
+            if subdir_path.exists():
+                self.save_files.extend([str(p) for p in subdir_path.glob('*.save')])
+        
+        # Remove duplicates while preserving order
+        self.save_files = list(dict.fromkeys(self.save_files))
         
         # Load all saves
         self.saves = {}

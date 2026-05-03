@@ -1,0 +1,11 @@
+# Barotrauma Save File Viewer
+# No external dependencies required - uses only Python standard library
+
+# Standard library modules used:
+# - tkinter (GUI)
+# - gzip (compression)
+# - zlib (decompression)
+# - xml.etree.ElementTree (XML parsing)
+# - pathlib (path handling)
+# - collections (data aggregation)
+# - re (regex)
