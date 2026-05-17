@@ -44,16 +44,18 @@ reverse-baro/
 
 ## 📋 Requirements
 
-- Python 3.8 or higher
-- No external dependencies (uses only standard library modules)
+- Python 3.10 or higher
+
+### Dependencies:
+- `dearpygui>=1.10` - Modern Python GUI library
+- `ttkbootstrap>=1.10` - Bootstrap-themed tkinter widgets
 
 ### Standard Library Modules Used:
-- `tkinter` - GUI framework
-- `gzip` - Outer layer decompression
-- `zlib` - Inner gzip stream decompression
+- `gzip` - Decompression
 - `xml.etree.ElementTree` - XML parsing
 - `pathlib` - Path handling
-- `collections.defaultdict` - Data aggregation
+- `argparse` - CLI argument parsing
+- `json` - JSON serialization
 
 ## 🛠 Installation
 

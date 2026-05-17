@@ -1,0 +1,25 @@
+[project]
+name = "reverse-baro"
+version = "0.1.0"
+description = "Parse and analyze Barotrauma save files"
+requires-python = ">=3.10"
+dependencies = [
+    "dearpygui>=1.10",
+    "ttkbootstrap>=1.10",
+]
+
+[project.scripts]
+reverse-baro = "reverse_baro.cli:main"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+packages = ["parser"]
+include-package-data = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
