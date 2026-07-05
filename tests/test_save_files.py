@@ -1,492 +1,322 @@
 #!/usr/bin/env python3
 """
-Comprehensive test suite for save file viewer.
-Tests loading, parsing, and displaying data from various save files.
+Tests for the PySide6 GUI integration with the Barotrauma save file parser.
+Tests loading, parsing, and displaying data through the GUI widgets.
 """
 
-import unittest
 import sys
-import os
 from pathlib import Path
 
-# Add src directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
-
-from save_file_viewer import SaveFileViewer
-import tkinter as tk
-
-
-class TestSaveFileLoading(unittest.TestCase):
-    """Test saving and loading various save files."""
-
-    @classmethod
-    def setUpClass(cls):
-        """Set up test fixtures."""
-        cls.root = tk.Tk()
-        cls.root.withdraw()  # Hide window during tests
-
-        # Find all test save files in data directory
-        cls.test_dir = Path(__file__).parent.parent / 'data'
-        cls.save_files = list(cls.test_dir.glob("**/*.save"))
-
-        print(f"\n{'=' * 70}")
-        print(f"Found {len(cls.save_files)} save files to test:")
-        for sf in sorted(cls.save_files):
-            print(f"  - {sf.relative_to(cls.test_dir)}")
-        print("=" * 70 + "\n")
-
-    @classmethod
-    def tearDownClass(cls):
-        """Clean up after tests."""
-        cls.root.destroy()
-
-    def setUp(self):
-        """Create a new viewer instance for each test."""
-        self.app = SaveFileViewer(self.root)
-
-    def tearDown(self):
-        """Clear state between tests."""
-        self.app.current_save_path = None
-        self.app.characters = []
-        self.app.sub_info = {}
-        self.app.campaign_settings = {}
-        self.app.locations = []
-        self.app.destinations = []
-
-    def test_load_potato2_save(self):
-        """Test loading potato 2 save file."""
-        save_file = self.test_dir / "potato 2.save"
-
-        if not save_file.exists():
-            self.skipTest(f"File not found: {save_file}")
-
-        self.app.current_save_path = str(save_file)
-        self.app.parse_save_file()
-
-        # Verify submarine info is loaded
-        self.assertIn("name", self.app.sub_info)
-        self.assertGreater(len(self.app.characters), 0, "Should have characters")
-
-    def test_load_2mission_save(self):
-        """Test loading 2mission save file."""
-        save_file = self.test_dir / "samples" / "2mission.save"
-
-        if not save_file.exists():
-            self.skipTest(f"File not found: {save_file}")
-
-        self.app.current_save_path = str(save_file)
-        self.app.parse_save_file()
-
-        # Should have campaign data (locations)
-        self.assertGreater(len(self.app.locations), 0, "Should have locations")
-        # Note: Some saves may not have active mission destinations
-
-    def test_load_10mission_save(self):
-        """Test loading 10mission save file."""
-        save_file = self.test_dir / "samples" / "10mission.save"
-
-        if not save_file.exists():
-            self.skipTest(f"File not found: {save_file}")
-
-        self.app.current_save_path = str(save_file)
-        self.app.parse_save_file()
-
-        # Should have campaign data
-        self.assertGreater(len(self.app.locations), 0)
-        self.assertGreaterEqual(len(self.app.destinations), 0)  # May have no missions
-
-    def test_load_grav_save(self):
-        """Test loading grav save file."""
-        save_file = self.test_dir / "samples" / "grav.save"
-
-        if not Path(save_file).exists():
-            self.skipTest(f"File not found: {save_file}")
-
-        self.app.current_save_path = save_file
-        self.app.parse_save_file()
-
-        # Verify data is loaded
-        self.assertIn("name", self.app.sub_info)
-
-    def test_load_lumen_save(self):
-        """Test loading lumen save file."""
-        save_file = self.test_dir / "lumen.save"
-
-        if not save_file.exists():
-            self.skipTest(f"File not found: {save_file}")
-
-        self.app.current_save_path = str(save_file)
-        self.app.parse_save_file()
-
-        # Verify data is loaded
-        self.assertIn("name", self.app.sub_info)
-
-    def test_load_worm_save(self):
-        """Test loading worm save file."""
-        save_file = self.test_dir / "worm.save"
-
-        if not save_file.exists():
-            self.skipTest(f"File not found: {save_file}")
-
-        self.app.current_save_path = str(save_file)
-        self.app.parse_save_file()
-
-        # Verify data is loaded
-        self.assertIn("name", self.app.sub_info)
-
-    def test_load_aaaa_save(self):
-        """Test loading aaaa save file."""
-        save_file = self.test_dir / "aaaa.save"
-
-        if not save_file.exists():
-            self.skipTest(f"File not found: {save_file}")
-
-        self.app.current_save_path = str(save_file)
-        self.app.parse_save_file()
-
-        # Verify data is loaded
-        self.assertIn("name", self.app.sub_info)
-
-    def test_load_cc_game_save(self):
-        """Test loading cc_game save file."""
-        save_file = self.test_dir / "cc_game.save"
-
-        if not save_file.exists():
-            self.skipTest(f"File not found: {save_file}")
-
-        self.app.current_save_path = str(save_file)
-        self.app.parse_save_file()
-
-        # Verify data is loaded
-        self.assertIn("name", self.app.sub_info)
-
-    def test_load_duplicate_folder_saves(self):
-        """Test loading saves from duplicate folder."""
-        dup_dir = self.test_dir / "duplicate"
-
-        if not dup_dir.exists():
-            self.skipTest(f"Directory not found: {dup_dir}")
-
-        for save_file in list(dup_dir.glob("*.save"))[:3]:  # Test first 3
-            with self.subTest(save_file=save_file.name):
-                self.app.current_save_path = str(save_file)
-                self.app.parse_save_file()
-
-                self.assertIn("name", self.app.sub_info, f"Failed for {save_file.name}")
-
-    def test_load_newer_saves_folder(self):
-        """Test loading saves from newer-saves folder."""
-        newer_dir = self.test_dir / "newer-saves"
-
-        if not newer_dir.exists():
-            self.skipTest(f"Directory not found: {newer_dir}")
-
-        for save_file in list(newer_dir.glob("*.save")):
-            with self.subTest(save_file=save_file.name):
-                self.app.current_save_path = str(save_file)
-                self.app.parse_save_file()
-
-                # Should have submarine info
-                self.assertIn("name", self.app.sub_info, f"Failed for {save_file.name}")
-
-    def test_character_count_valid(self):
-        """Test that character counts are reasonable."""
-        save_file = self.test_dir / "potato 2.save"
-
-        if not Path(save_file).exists():
-            self.skipTest(f"File not found: {save_file}")
-
-        self.app.current_save_path = save_file
-        self.app.parse_save_file()
-
-        # Should have some characters (not zero, not excessive)
-        char_count = len(self.app.characters)
-        self.assertGreater(char_count, 0, "Should have at least one character")
-        self.assertLess(char_count, 100, "Unusually high character count")
-
-    def test_locations_valid(self):
-        """Test that locations are parsed correctly."""
-        save_file = self.test_dir / "samples" / "2mission.save"
-
-        if not save_file.exists():
-            self.skipTest(f"File not found: {save_file}")
-
-        self.app.current_save_path = str(save_file)
-        self.app.parse_save_file()
-
-        # Check location structure
-        for loc in self.app.locations:
-            self.assertIn("name", loc, "Location should have name")
-            self.assertIn("type", loc, "Location should have type")
-
-    def test_campaign_settings_present(self):
-        """Test that campaign settings are extracted when available."""
-        save_file = self.test_dir / "samples" / "10mission.save"
-
-        if not save_file.exists():
-            self.skipTest(f"File not found: {save_file}")
-
-        self.app.current_save_path = str(save_file)
-        self.app.parse_save_file()
-
-        # Should have campaign settings with max mission count
-        self.assertIn(
-            "MaxMissionCount",
-            self.app.campaign_settings,
-            "Should have MaxMissionCount in campaign settings",
-        )
-
-    def test_submarine_info_complete(self):
-        """Test that submarine info has all required fields."""
-        save_file = self.test_dir / "potato 2.save"
-
-        if not save_file.exists():
-            self.skipTest(f"File not found: {save_file}")
-
-        self.app.current_save_path = str(save_file)
-        self.app.parse_save_file()
-
-        required_fields = ["name", "type", "class", "tier"]
-        for field in required_fields:
-            self.assertIn(field, self.app.sub_info, f"Submarine info missing {field}")
-
-    def test_character_statuses(self):
-        """Test that characters have valid status values."""
-        save_file = "TestFiles/potato 2.save"
-
-        if not Path(save_file).exists():
-            self.skipTest(f"File not found: {save_file}")
-
-        self.app.current_save_path = save_file
-        self.app.parse_save_file()
-
-        valid_statuses = ["In Duffelbag", "Campaign", "Living", "Unknown"]
-        for char in self.app.characters:
-            status = char.get("status", "")
-            self.assertIn(status, valid_statuses, f"Invalid status: {status}")
-
-
-class TestSaveFileViewerGUI(unittest.TestCase):
-    """Test GUI functionality of the save file viewer."""
-
-    @classmethod
-    def setUpClass(cls):
-        """Set up test fixtures."""
-        cls.root = tk.Tk()
-        cls.root.withdraw()
-        cls.app = SaveFileViewer(cls.root)
-
-    @classmethod
-    def tearDownClass(cls):
-        """Clean up after tests."""
-        cls.root.destroy()
-
-    def test_refresh_characters_table(self):
-        """Test that character table refresh works."""
-        # Load a save file first
-        save_file = "TestFiles/potato 2.save"
-        if not Path(save_file).exists():
-            self.skipTest(f"File not found: {save_file}")
-
-        self.app.current_save_path = save_file
-        self.app.parse_save_file()
-
-        # Test refresh
-        initial_count = len(self.app.characters)
-        self.assertGreater(initial_count, 0)
-
-        # Refresh should work without errors
-        try:
-            self.app.refresh_characters_table()
-        except Exception as e:
-            self.fail(f"refresh_characters_table raised {type(e).__name__}")
-
-    def test_stats_update(self):
-        """Test that statistics are updated correctly."""
-        save_file = "TestFiles/potato 2.save"
-        if not Path(save_file).exists():
-            self.skipTest(f"File not found: {save_file}")
-
-        self.app.current_save_path = save_file
-        self.app.parse_save_file()
-
-        # Update stats should work
-        try:
-            self.app.update_stats()
-        except Exception as e:
-            self.fail(f"update_stats raised {type(e).__name__}")
-
-    def test_show_save_info(self):
-        """Test that save info display works."""
-        save_file = "TestFiles/potato 2.save"
-        if not Path(save_file).exists():
-            self.skipTest(f"File not found: {save_file}")
-
-        self.app.current_save_path = save_file
-        self.app.parse_save_file()
-
-        try:
-            self.app.show_save_info()
-            info_text = self.app.info_text_widget.get("1.0", tk.END)
-            self.assertIn("Save File:", info_text, "Info should contain save file name")
-        except Exception as e:
-            self.fail(f"show_save_info raised {type(e).__name__}")
-
-    def test_show_campaign_settings(self):
-        """Test that campaign settings display works."""
-        save_file = "TestFiles/simple/10mission.save"
-        if not Path(save_file).exists():
-            self.skipTest(f"File not found: {save_file}")
-
-        self.app.current_save_path = save_file
-        self.app.parse_save_file()
-
-        try:
-            self.app.show_campaign_settings()
-            campaign_text = self.app.campaign_text_widget.get("1.0", tk.END)
-            # Should display at least the title
-            self.assertIn("CAMPAIGN SETTINGS", campaign_text)
-        except Exception as e:
-            self.fail(f"show_campaign_settings raised {type(e).__name__}")
-
-    def test_show_locations(self):
-        """Test that locations display works."""
-        save_file = "TestFiles/simple/2mission.save"
-        if not Path(save_file).exists():
-            self.skipTest(f"File not found: {save_file}")
-
-        self.app.current_save_path = save_file
-        self.app.parse_save_file()
-
-        try:
-            self.app.show_locations_and_missions()
-            loc_text = self.app.locations_text_widget.get("1.0", tk.END)
-            self.assertIn("LOCATIONS", loc_text, "Should display locations")
-        except Exception as e:
-            self.fail(f"show_locations_and_missions raised {type(e).__name__}")
-
-
-class TestSaveFileParsing(unittest.TestCase):
-    """Test parsing of save file data."""
-
-    def test_xml_extraction(self):
-        """Test that XML can be extracted from saves."""
-        save_file = "TestFiles/potato 2.save"
-
-        if not Path(save_file).exists():
-            self.skipTest(f"File not found: {save_file}")
-
-        app = SaveFileViewer(tk.Tk())
-        app.root.withdraw()
-
-        try:
-            with open(save_file, "rb") as f:
-                data = f.read()
-
-            # Level 0 decompression
-            level0_data = __import__("gzip").decompress(data)
-
-            # Extract files
-            files = app._extract_save_files(level0_data)
-
-            self.assertGreater(len(files), 0, "Should extract at least one file")
-
-            # Should have XML files
-            xml_files = [f for f in files.keys() if f.endswith(".xml")]
-            self.assertGreater(len(xml_files), 0, "Should have XML files")
-
-        finally:
-            app.root.destroy()
-
-    def test_character_data_parsing(self):
-        """Test that character data can be parsed."""
-        save_file = "TestFiles/simple/2mission.save"
-
-        if not Path(save_file).exists():
-            self.skipTest(f"File not found: {save_file}")
-
-        app = SaveFileViewer(tk.Tk())
-        app.root.withdraw()
-
-        try:
-            app.current_save_path = save_file
-            app.parse_save_file()
-
-            # Should have parsed characters
-            self.assertGreater(len(app.characters), 0, "Should have characters")
-
-            # Check character structure
-            for char in app.characters:
-                self.assertIn("name", char, "Character should have name")
-                self.assertIn("job", char, "Character should have job")
-
-        finally:
-            app.root.destroy()
-
-
-class TestEdgeCases(unittest.TestCase):
-    """Test edge cases and error handling."""
-
-    @classmethod
-    def setUpClass(cls):
-        cls.root = tk.Tk()
-        cls.root.withdraw()
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.root.destroy()
-
-    def test_invalid_file_path(self):
-        """Test behavior with invalid file path."""
-        app = SaveFileViewer(self.root)
-
-        # Should raise an error for non-existent file
-        app.current_save_path = "nonexistent.save"
-
-        with self.assertRaises(FileNotFoundError):
-            app.parse_save_file()
-
-    def test_empty_campaign_settings(self):
-        """Test handling of missing campaign settings."""
-        save_file = "TestFiles/potato 2.save"  # Template file, no campaign
-
-        if not Path(save_file).exists():
-            self.skipTest(f"File not found: {save_file}")
-
-        app = SaveFileViewer(self.root)
-        app.current_save_path = save_file
-        app.parse_save_file()
-
-        # Template files may have empty or no campaign settings
-        self.assertIsInstance(app.campaign_settings, dict)
-
-
-if __name__ == "__main__":
-    print("Running comprehensive save file tests...\n")
-
-    # Create test suite
-    loader = unittest.TestLoader()
-    suite = unittest.TestSuite()
-
-    # Add all test classes
-    suite.addTests(loader.loadTestsFromTestCase(TestSaveFileLoading))
-    suite.addTests(loader.loadTestsFromTestCase(TestSaveFileViewerGUI))
-    suite.addTests(loader.loadTestsFromTestCase(TestSaveFileParsing))
-    suite.addTests(loader.loadTestsFromTestCase(TestEdgeCases))
-
-    # Run tests with verbose output
-    runner = unittest.TextTestRunner(verbosity=2)
-    result = runner.run(suite)
-
-    # Print summary
-    print("\n" + "=" * 70)
-    print("TEST SUMMARY")
-    print("=" * 70)
-    print(f"Tests run: {result.testsRun}")
-    print(f"Successes: {result.testsRun - len(result.failures) - len(result.errors)}")
-    print(f"Failures: {len(result.failures)}")
-    print(f"Errors: {len(result.errors)}")
-    print("=" * 70)
-
-    # Exit with appropriate code
-    sys.exit(0 if result.wasSuccessful() else 1)
+import pytest
+from PySide6.QtWidgets import QApplication
+
+# Ensure src is on the path
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+
+from parser.decode import parse_save
+from parser.data import SaveFile, SubmarineInfo, Character, Hull
+
+# GUI widgets (headless-friendly, no window shown)
+from gui import (
+    CharactersWidget, HullsWidget, ItemsWidget, SubmarineWidget,
+    CampaignWidget, MissionsWidget, RawXmlWidget, Sidebar, MapWidget,
+    _condition_color, _status_color, _status_label, _biome_color,
+)
+
+# ─── Fixtures ────
+
+SAVE_PATH = Path(__file__).parent.parent / "data" / "samples" / "grav.save"
+POTATO_PATH = Path(__file__).parent.parent / "data" / "potato 2.save"
+MISSION2_PATH = Path(__file__).parent.parent / "data" / "samples" / "2mission.save"
+
+
+@pytest.fixture
+def app():
+    """Create a QApplication for headless widget testing."""
+    existing = QApplication.instance()
+    if existing is None:
+        return QApplication([])
+    return existing
+
+
+@pytest.fixture
+def parsed_grav():
+    if not SAVE_PATH.exists():
+        pytest.skip(f"Sample file not found: {SAVE_PATH}")
+    return parse_save(SAVE_PATH)
+
+
+@pytest.fixture
+def parsed_potato(app):
+    if not POTATO_PATH.exists():
+        pytest.skip(f"File not found: {POTATO_PATH}")
+    return parse_save(POTATO_PATH)
+
+
+# ─── Color helpers ───
+
+class TestColorHelpers:
+    def test_condition_color_green(self):
+        c = _condition_color(90)
+        assert c.red() == 80 and c.green() == 220
+
+    def test_condition_color_red(self):
+        c = _condition_color(10)
+        assert c.red() == 230 and c.green() == 60
+
+    def test_status_label_dead(self, app):
+        c = Character(id="1", name="Dead", job="Captain", condition="0%", permanently_dead=True)
+        assert _status_label(c) == "Dead"
+
+    def test_status_label_campaign(self, app):
+        c = Character(id="1", name="Camp", job="Pilot", status="Campaign")
+        assert _status_label(c) == "Campaign"
+
+    def test_status_label_duffelbag(self, app):
+        c = Character(id="1", name="Bag", job="Engineer", status="In Duffelbag")
+        assert _status_label(c) == "Duffelbag"
+
+
+# ─── Characters Widget ───
+
+class TestCharactersWidget:
+    def test_populates_table(self, app, parsed_grav):
+        w = CharactersWidget()
+        w.set_data(parsed_grav.characters)
+        assert w.table.rowCount() == len(parsed_grav.characters)
+
+    def test_filter_all_shows_all(self, app, parsed_grav):
+        w = CharactersWidget()
+        w.set_data(parsed_grav.characters)
+        w.filter_combo.setCurrentText("All")
+        assert w.table.rowCount() == len(parsed_grav.characters)
+
+    def test_filter_by_job(self, app, parsed_grav):
+        w = CharactersWidget()
+        w.set_data(parsed_grav.characters)
+        jobs = {c.job for c in parsed_grav.characters}
+        test_job = max(jobs, key=lambda j: sum(1 for c in parsed_grav.characters if c.job == j))
+        w.filter_combo.setCurrentText(test_job)
+        # After filtering, only matching rows should be shown
+        for row in range(w.table.rowCount()):
+            job_text = w.table.item(row, 2).text()
+            assert job_text == test_job
+
+    def test_search_filters(self, app, parsed_grav):
+        w = CharactersWidget()
+        w.set_data(parsed_grav.characters)
+        # Search for first character's name
+        first_name = parsed_grav.characters[0].name
+        w.search_input.setText(first_name)
+        # Should have fewer or equal rows
+        assert w.table.rowCount() <= len(parsed_grav.characters)
+        if w.table.rowCount() > 0:
+            found = w.table.item(0, 1).text()
+            assert first_name.lower() in found.lower()
+
+    def test_empty_data(self, app):
+        w = CharactersWidget()
+        w.set_data([])
+        assert w.table.rowCount() == 0
+
+
+# ─── Hulls Widget ───
+
+class TestHullsWidget:
+    def test_populates_table(self, app, parsed_grav):
+        w = HullsWidget()
+        w.set_data(parsed_grav.hulls)
+        assert w.table.rowCount() == len(parsed_grav.hulls)
+
+    def test_health_colors(self, app, parsed_grav):
+        w = HullsWidget()
+        w.set_data(parsed_grav.hulls)
+        for row in range(w.table.rowCount()):
+            item = w.table.item(row, 2)
+            assert item is not None
+            assert "%" in item.text()
+
+    def test_empty_data(self, app):
+        w = HullsWidget()
+        w.set_data([])
+        assert w.table.rowCount() == 0
+
+
+# ─── Items Widget ───
+
+class TestItemsWidget:
+    def test_populates_table(self, app, parsed_grav):
+        w = ItemsWidget()
+        w.set_data(parsed_grav.items)
+        assert w.table.rowCount() == len(parsed_grav.items)
+
+    def test_filter_by_type(self, app, parsed_grav):
+        w = ItemsWidget()
+        w.set_data(parsed_grav.items)
+        types = {i.item_type for i in parsed_grav.items}
+        test_type = max(types, key=lambda t: sum(1 for i in parsed_grav.items if i.item_type == t))
+        w.filter_combo.setCurrentText(test_type)
+        for row in range(w.table.rowCount()):
+            type_text = w.table.item(row, 2).text()
+            assert type_text == test_type
+
+    def test_empty_data(self, app):
+        w = ItemsWidget()
+        w.set_data([])
+        assert w.table.rowCount() == 0
+
+
+# ─── Missions Widget ───
+
+class TestMissionsWidget:
+    def test_populates_table(self, app, parsed_grav):
+        w = MissionsWidget()
+        w.set_data(parsed_grav.missions)
+        assert w.table.rowCount() == len(parsed_grav.missions)
+
+    def test_status_colors(self, app, parsed_grav):
+        w = MissionsWidget()
+        w.set_data(parsed_grav.missions)
+        for row in range(w.table.rowCount()):
+            status_item = w.table.item(row, 5)
+            assert status_item is not None
+            status = status_item.text()
+            assert status in ("Active", "Failed", "Not attempted")
+
+    def test_empty_data(self, app):
+        w = MissionsWidget()
+        w.set_data([])
+        assert w.table.rowCount() == 0
+
+
+# ─── Submarine Widget ───
+
+class TestSubmarineWidget:
+    def test_displays_data(self, app, parsed_grav):
+        w = SubmarineWidget()
+        w.set_data(parsed_grav.submarine, parsed_grav.original_size, parsed_grav.decompressed_size)
+        text = w.text_edit.toPlainText()
+        assert "Camel" in text or parsed_grav.submarine.name in text
+        assert "bytes" in text
+
+
+# ─── Campaign Widget ───
+
+class TestCampaignWidget:
+    def test_displays_campaign(self, app, parsed_grav):
+        w = CampaignWidget()
+        w.set_data(parsed_grav)
+        text = w.text_edit.toPlainText()
+        assert "Max Missions" in text
+
+
+# ─── Raw XML Widget ───
+
+class TestRawXmlWidget:
+    def test_displays_xml(self, app, parsed_grav):
+        w = RawXmlWidget()
+        w.set_data(parsed_grav.raw_xml)
+        text = w.text_edit.toPlainText()
+        if parsed_grav.raw_xml:
+            assert len(text) > 0
+
+
+# ─── Sidebar Widget ───
+
+class TestSidebar:
+    def test_stats_update(self, app):
+        s = Sidebar()
+        s.update_stats("Test stats text")
+        assert s.stats_label.text() == "Test stats text"
+
+    def test_recent_update(self, app):
+        s = Sidebar()
+        recent = [str(SAVE_PATH)] if SAVE_PATH.exists() else []
+        s.update_recent(recent)
+        if recent:
+            assert s.recent_layout.count() >= 1
+
+
+# ─── Map Widget ───
+
+class TestMapWidget:
+    def test_biome_color_deep_ocean(self):
+        c = _biome_color("Deep Ocean")
+        assert c.blue() > c.red()
+
+    def test_biome_color_ocean(self):
+        c = _biome_color("Ocean")
+        assert c.blue() > c.red()
+
+    def test_biome_color_caves(self):
+        c = _biome_color("Caves")
+        assert c.red() > c.blue()
+
+    def test_biome_color_unknown(self):
+        c = _biome_color("Something Totally Unknown")
+        assert c is not None
+
+    def test_map_widget_creates(self, app):
+        m = MapWidget()
+        assert m.scene is not None
+        assert m.view is not None
+
+    def test_map_widget_set_empty(self, app):
+        m = MapWidget()
+        m.set_data([])
+        assert len(m._items) == 0
+
+    def test_map_widget_plots_locations(self, app, parsed_grav):
+        m = MapWidget()
+        m.set_data(parsed_grav.locations)
+        # At least some locations should have coordinates
+        # (some saves have positions, some don't)
+        # The widget should not crash regardless
+        assert m.scene is not None
+
+    def test_parse_position(self, app):
+        m = MapWidget()
+        assert m._parse_pos("100,200") == (100.0, 200.0)
+        assert m._parse_pos("100, 200") == (100.0, 200.0)
+        assert m._parse_pos("Unknown") is None
+        assert m._parse_pos("") is None
+        assert m._parse_pos("not-a-number,200") is None
+
+    def test_map_has_legend(self, app, parsed_grav):
+        m = MapWidget()
+        m.set_data(parsed_grav.locations)
+        if len(m._biome_legend) > 0:
+            assert m._legend.count() >= 2  # at least one dot + label
+
+
+# ─── End-to-end: parse + widgets ───
+
+class TestEndToEnd:
+    def test_load_grav_and_populate_widgets(self, app, parsed_grav):
+        """Parse grav.save, populate all widgets, verify data is present."""
+        chars = CharactersWidget()
+        chars.set_data(parsed_grav.characters)
+        assert chars.table.rowCount() > 0
+
+        hulls = HullsWidget()
+        hulls.set_data(parsed_grav.hulls)
+        assert hulls.table.rowCount() > 0
+
+        items = ItemsWidget()
+        items.set_data(parsed_grav.items)
+        assert items.table.rowCount() > 0
+
+        missions = MissionsWidget()
+        missions.set_data(parsed_grav.missions)
+        assert missions.table.rowCount() > 0
+
+    def test_nonexistent_file_raises(self):
+        bad_path = Path("/nonexistent/file.save")
+        with pytest.raises(FileNotFoundError):
+            parse_save(bad_path)
+
+    def test_non_gzip_file_raises(self, tmp_path):
+        fake = tmp_path / "fake.save"
+        fake.write_bytes(b"not a gzip file")
+        with pytest.raises(ValueError, match="Not a valid gzip"):
+            parse_save(fake)

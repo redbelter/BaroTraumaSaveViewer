@@ -4,8 +4,7 @@ version = "0.1.0"
 description = "Parse and analyze Barotrauma save files"
 requires-python = ">=3.10"
 dependencies = [
-    "dearpygui>=1.10",
-    "ttkbootstrap>=1.10",
+    "pyside6>=6.6.0",
 ]
 
 [project.scripts]

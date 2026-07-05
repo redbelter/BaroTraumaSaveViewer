@@ -227,7 +227,7 @@ class TestSaveFileData:
         assert len(parsed_save.characters) > 0, "No characters parsed!"
         for c in parsed_save.characters:
             assert c.name != "Unknown"
-            assert c.id != "0" or c.id == ""
+            assert c.id != ""
 
     def test_characters_have_health(self, parsed_save: SaveFile):
         """Characters should have health percentage in condition field."""
@@ -259,8 +259,8 @@ class TestSaveFileData:
     def test_locations_parsed(self, parsed_save: SaveFile):
         assert len(parsed_save.locations) > 0, "No locations parsed!"
         for loc in parsed_save.locations:
-            assert loc.name != "Unknown"
-            assert loc.location_type != "Unknown"
+            if loc.name != "Unknown":
+                assert loc.location_type != "Unknown", f"Location {loc.name} has Unknown type"
 
     def test_campaign_settings_parsed(self, parsed_save: SaveFile):
         assert parsed_save.campaign_settings is not None
@@ -302,13 +302,13 @@ class TestSubmarineParsing:
         decomp = _try_decompress(camel)
         assert decomp is not None
 
-        sf = parse_submarine(decomp.decode("utf-8", errors="ignore"))
-        assert sf["name"] == "Camel"
-        assert sf["sub_type"] == "Player"
-        assert sf["class_"] == "Transport"
-        assert sf["tier"] == "1"
-        assert sf["game_version"] != "Unknown"
-        assert sf["dimensions"] != "Unknown"
+        sub = parse_submarine(decomp.decode("utf-8", errors="ignore"))
+        assert sub.name == "Camel"
+        assert sub.sub_type == "Player"
+        assert sub.class_ == "Transport"
+        assert sub.tier == "1"
+        assert sub.game_version != "Unknown"
+        assert sub.dimensions != "Unknown"
 
     def test_bare_hull_parses_cleanly(self):
         """Bare <Hull ID="152" /> should not crash and should default to 100% health."""

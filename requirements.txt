@@ -1,8 +1,10 @@
 # Barotrauma Save File Viewer
-# No external dependencies required - uses only Python standard library
+# GUI: PySide6
+# Parser: Python standard library only
+
+pyside6>=6.6.0
 
 # Standard library modules used:
-# - tkinter (GUI)
 # - gzip (compression)
 # - zlib (decompression)
 # - xml.etree.ElementTree (XML parsing)
