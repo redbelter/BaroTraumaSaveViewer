@@ -18,15 +18,17 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QRectF
 from PySide6.QtGui import (
     QKeySequence, QAction, QColor, QFont, QPen, QBrush,
-    QPolygonF, QWheelEvent, QPainter,
+    QPolygonF, QWheelEvent, QPainter, QIcon,
 )
 
 try:
     from parser.data import SaveFile, Character, Item, Hull, Mission, Location
     from parser.decode import parse_save
+    from parser.parse import parse_character_data, parse_characters_from_xml
 except ImportError:
     from data import SaveFile, Character, Item, Hull, Mission, Location
     from decode import parse_save
+    from parse import parse_character_data, parse_characters_from_xml
 
 
 # ─── Color helpers ────────────────────────────────────────────────
@@ -149,6 +151,7 @@ def _sep() -> QFrame:
 class Sidebar(QWidget):
     open_signal = Signal()
     clear_signal = Signal()
+    characters_signal = Signal()
     recent_click = Signal(str)
 
     def __init__(self, parent=None):
@@ -167,6 +170,10 @@ class Sidebar(QWidget):
         self.open_btn = QPushButton("Open File")
         self.open_btn.clicked.connect(self.open_signal.emit)
         self.layout.addWidget(self.open_btn)
+
+        self.load_chars_btn = QPushButton("Load Characters...")
+        self.load_chars_btn.clicked.connect(self.characters_signal.emit)
+        self.layout.addWidget(self.load_chars_btn)
 
         self.clear_btn = QPushButton("Clear")
         self.clear_btn.clicked.connect(self.clear_signal.emit)
@@ -547,8 +554,30 @@ class RawXmlWidget(QWidget):
             preview = "No raw XML available."
         self.text_edit.setPlainText(preview)
 
-
 # ─── Map Widget ──
+
+
+class _MapView(QGraphicsView):
+    """Custom QGraphicsView with click handling for location items."""
+
+    def __init__(self, scene: QGraphicsScene, map_widget: "MapWidget"):
+        super().__init__(scene, map_widget)
+        self._map = map_widget
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            point = event.position().toPoint() if hasattr(event.position(), "toPoint") else event.pos()
+            scene_pos = self.mapToScene(point)
+            items = self.scene().items(scene_pos)
+            for item in items:
+                loc_index = item.data(0)
+                if loc_index is not None:
+                    loc = self._map._loc_by_index.get(int(loc_index))
+                    if loc:
+                        self._map._show_location_dialog(loc)
+                        return
+        super().mousePressEvent(event)
+
 
 class MapWidget(QWidget):
     """Interactive map of Barotrauma locations."""
@@ -593,7 +622,7 @@ class MapWidget(QWidget):
 
         # Map view
         self.scene = QGraphicsScene(self)
-        self.view = QGraphicsView(self.scene)
+        self.view = _MapView(self.scene, self)
         self.view.setRenderHints(self.view.renderHints() | QPainter.Antialiasing)
         self.view.setDragMode(QGraphicsView.ScrollHandDrag)
         self.view.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
@@ -617,11 +646,25 @@ class MapWidget(QWidget):
         self.layout.addWidget(self.view)
 
         self._items: list[tuple[float, float, str, str, str]] = []
+        self._loc_by_index: dict[int, Location] = {}
+        self._missions: list[Mission] = []
 
-    def set_data(self, locations: list[Location], submarine_pos: tuple[float, float] | None = None):
+    def set_data(
+        self,
+        locations: list[Location],
+        submarine_pos: tuple[float, float] | None = None,
+        missions: list[Mission] | None = None,
+    ):
         self.scene.clear()
         self._items = []
         self._biome_legend: dict[str, QColor] = {}
+        self._loc_by_index = {}
+        self._missions = missions or []
+
+        # Build index→location lookup for mission wiring
+        for loc in locations:
+            if loc.index is not None:
+                self._loc_by_index[loc.index] = loc
 
         # Draw dark ocean background
         bg = self.scene.addRect(-50000, -50000, 100000, 100000)
@@ -657,12 +700,12 @@ class MapWidget(QWidget):
             glow.setPen(QPen(col, 1.5))
             glow.setBrush(QBrush(QColor(0, 0, 0, 0)))
 
-            # Dot
+            # Dot (clickable — stores location index in user data)
             dot = self.scene.addEllipse(x - 8, y - 8, 16, 16)
             dot.setPen(Qt.NoPen)
             dot.setBrush(QBrush(col))
 
-            # Hover target (transparent larger area)
+            # Hover target (transparent larger area — also clickable)
             hover = self.scene.addEllipse(x - 20, y - 20, 40, 40)
             hover.setPen(Qt.NoPen)
             hover.setBrush(Qt.NoBrush)
@@ -671,11 +714,45 @@ class MapWidget(QWidget):
             )
             hover.setAcceptHoverEvents(True)
 
+            # Store location index for click detection
+            if loc.index is not None:
+                hover.setData(0, loc.index)
+                dot.setData(0, loc.index)
+
             # Label
             label = self.scene.addText(loc.name)
             label.setDefaultTextColor(QColor("#cdd6f4cc"))
             label.setFont(QFont("Segoe UI", 7))
             label.setPos(x + 14, y - 6)
+
+        # ── Draw mission connection lines ──
+        mission_line_pen = QPen(QColor(137, 180, 250, 153), 2)  # #89b4fa @ 60%
+        mission_line_pen.setStyle(Qt.DashLine)
+        sub_to_mission_pen = QPen(QColor(137, 180, 250, 180), 2.5)
+        sub_to_mission_pen.setStyle(Qt.SolidLine)
+
+        for mission in self._missions:
+            if mission.origin_index is not None and mission.destination_index is not None:
+                origin_loc = self._loc_by_index.get(mission.origin_index)
+                dest_loc = self._loc_by_index.get(mission.destination_index)
+                if origin_loc and dest_loc:
+                    opos = self._parse_pos(origin_loc.position)
+                    dpos = self._parse_pos(dest_loc.position)
+                    if opos and dpos:
+                        self.scene.addLine(opos[0], opos[1], dpos[0], dpos[1], mission_line_pen)
+
+        # ── Draw sub → selected mission lines ──
+        if submarine_pos:
+            for mission in self._missions:
+                if mission.selected and mission.destination_index is not None:
+                    dest_loc = self._loc_by_index.get(mission.destination_index)
+                    if dest_loc:
+                        dpos = self._parse_pos(dest_loc.position)
+                        if dpos:
+                            self.scene.addLine(
+                                submarine_pos[0], submarine_pos[1],
+                                dpos[0], dpos[1], sub_to_mission_pen,
+                            )
 
         # Submarine marker
         if submarine_pos:
@@ -704,6 +781,105 @@ class MapWidget(QWidget):
         else:
             self.scene.setSceneRect(-1000, -1000, 2000, 2000)
 
+    # ── Click dialog ──
+
+    def _show_location_dialog(self, loc: Location):
+        """Show a detail popup when a location dot is clicked."""
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"Location: {loc.name}")
+        dlg.setMinimumWidth(360)
+        dlg.setStyleSheet("""
+            QDialog {
+                background-color: #1e1e2e;
+                color: #cdd6f4;
+            }
+            QLabel { color: #cdd6f4; }
+            QGroupBox {
+                color: #cdd6f4;
+                border: 1px solid #45475a;
+                border-radius: 4px;
+                margin-top: 8px;
+                padding-top: 8px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 8px;
+                padding: 0 4px;
+            }
+            QPushButton {
+                background-color: #45475a;
+                color: #cdd6f4;
+                border: 1px solid #585b70;
+                border-radius: 4px;
+                padding: 4px 12px;
+            }
+            QPushButton:hover {
+                background-color: #585b70;
+            }
+        """)
+        lay = QVBoxLayout(dlg)
+
+        # Details section
+        details = QGroupBox("Details")
+        details_lay = QVBoxLayout(details)
+        detail_rows = [
+            ("Name:", loc.name),
+            ("Type:", loc.location_type),
+            ("Biome:", loc.biome),
+            ("Position:", loc.position),
+            ("Index:", str(loc.index) if loc.index is not None else "N/A"),
+        ]
+        coords = self._parse_pos(loc.position)
+        if coords:
+            detail_rows.append(("World X:", f"{coords[0]:.1f}"))
+            detail_rows.append(("World Y:", f"{coords[1]:.1f}"))
+        for lbl_text, val_text in detail_rows:
+            row = QHBoxLayout()
+            lbl = QLabel(lbl_text)
+            lbl.setFont(QFont("Segoe UI", 9, QFont.Bold))
+            lbl.setStyleSheet("min-width: 80px;")
+            row.addWidget(lbl)
+            val = QLabel(val_text)
+            val.setFont(QFont("Segoe UI", 9))
+            row.addWidget(val)
+            row.addStretch()
+            details_lay.addLayout(row)
+        lay.addWidget(details)
+
+        # Related missions section
+        related = [m for m in self._missions
+                   if m.destination_index == loc.index or m.origin_index == loc.index]
+        if related:
+            mg = QGroupBox(f"Related Missions ({len(related)})")
+            mg_lay = QVBoxLayout(mg)
+            for m in related:
+                flags = []
+                if m.origin_index == loc.index:
+                    flags.append("origin")
+                if m.destination_index == loc.index:
+                    flags.append("destination")
+                if m.selected:
+                    flags.append("selected")
+                flag_str = ", ".join(flags) if flags else "pass-through"
+                mtext = f"{m.prefab_id} — {m.mission_type} [{flag_str}]"
+                if m.times_attempted:
+                    mtext += f" (attempted {m.times_attempted}×)"
+                item_lbl = QLabel(mtext)
+                item_lbl.setFont(QFont("Segoe UI", 8))
+                item_lbl.setStyleSheet("padding: 2px 4px;")
+                mg_lay.addWidget(item_lbl)
+            lay.addWidget(mg)
+
+        # Close button
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(dlg.accept)
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        btn_row.addWidget(close_btn)
+        lay.addLayout(btn_row)
+
+        dlg.exec()
+
     def _parse_pos(self, pos: str) -> tuple[float, float] | None:
         """Parse 'x,y' or 'x, y' into float tuple."""
         try:
@@ -715,19 +891,70 @@ class MapWidget(QWidget):
         return None
 
     def _build_legend(self):
+        """Build legend showing symbols used and per-biome location counts."""
         while self._legend.count():
             child = self._legend.takeAt(0)
             if child.widget():
                 child.widget().deleteLater()
-        for biome, col in sorted(self._biome_legend.items()):
-            dot = QLabel()
-            dot.setObjectName("legend_dot")
-            dot.setStyleSheet(f"background: #{col.name().lstrip('#')}; "
-                              f"border-radius: 5px; min-width: 10px; min-height: 10px;")
-            self._legend.addWidget(dot)
-            label = QLabel(biome)
-            label.setStyleSheet("font-size: 8pt; padding-left: 2px; padding-right: 8px;")
-            self._legend.addWidget(label)
+
+        # Helper to format QColor as hex string
+        def _hex(col: QColor) -> str:
+            return "#{:02x}{:02x}{:02x}".format(col.red(), col.green(), col.blue())
+
+        def _sep():
+            s = QLabel("│")
+            s.setStyleSheet("padding: 0 4px; color: #585b70;")
+            self._legend.addWidget(s)
+
+        # Symbol key — Location dot
+        self._legend.addWidget(self._legend_dot(_biome_color("Deep Ocean")))
+        self._legend.addWidget(self._legend_text("Location"))
+
+        # Symbol key — Submarine diamond
+        self._legend.addWidget(self._legend_dot(QColor(233, 69, 96)))
+        self._legend.addWidget(self._legend_text("Submarine"))
+
+        _sep()
+
+        # Symbol key — Mission route (dashed line)
+        line_lbl = QLabel()
+        line_lbl.setStyleSheet("""
+            background: transparent;
+            border-bottom: 2px dashed #89b4fa;
+            min-width: 20px;
+            min-height: 10px;
+            padding-bottom: 2px;
+        """)
+        self._legend.addWidget(line_lbl)
+        self._legend.addWidget(self._legend_text("Mission Route"))
+
+        _sep()
+
+        # Per-biome counts
+        biome_counts: dict[str, int] = {}
+        for _, _, _, biome, _ in self._items:
+            biome_counts[biome] = biome_counts.get(biome, 0) + 1
+
+        for i, (biome, count) in enumerate(sorted(biome_counts.items())):
+            col = self._biome_legend.get(biome, DEFAULT_BIOME_COLOR)
+            self._legend.addWidget(self._legend_dot(col))
+            self._legend.addWidget(self._legend_text(f"{biome}: {count}"))
+            if i < len(biome_counts) - 1:
+                _sep()
+
+    @staticmethod
+    def _legend_dot(col: QColor) -> QLabel:
+        dot = QLabel()
+        dot.setObjectName("legend_dot")
+        dot.setStyleSheet(f"background: {col.name()}; border-radius: 5px; "
+                          f"min-width: 10px; min-height: 10px;")
+        return dot
+
+    @staticmethod
+    def _legend_text(text: str) -> QLabel:
+        label = QLabel(text)
+        label.setStyleSheet("font-size: 8pt; padding-left: 2px; padding-right: 8px;")
+        return label
 
     def _zoom_in(self):
         self.view.scale(1.4, 1.4)
@@ -784,9 +1011,11 @@ class SaveViewer(QMainWindow):
         super().__init__()
         self.sf: SaveFile | None = None
         self.file_path: Path | None = None
+        self._ext_char_count: int = 0  # chars loaded from external files
 
         self.setWindowTitle("Barotrauma Save Viewer")
         self.resize(1300, 820)
+        self._set_icon()
 
         self._build_menu()
         self._build_central()
@@ -797,6 +1026,18 @@ class SaveViewer(QMainWindow):
         recent = _load_recent()
         self.sidebar.update_recent(recent)
         self.statusBar().showMessage("Ready. Drop a .save file to begin.")
+
+    def _set_icon(self):
+        """Load and set the application icon."""
+        guimod = Path(__file__).resolve().parent
+        for icon_path in [
+            guimod.parent / "assets" / "app_icon.ico",
+            guimod / "assets" / "app_icon.ico",
+            Path("assets/app_icon.ico"),
+        ]:
+            if icon_path.exists():
+                self.setWindowIcon(QIcon(str(icon_path)))
+                return
 
     def _build_central(self):
         central = QWidget()
@@ -810,6 +1051,7 @@ class SaveViewer(QMainWindow):
         self.sidebar = Sidebar()
         self.sidebar.open_signal.connect(self._on_open)
         self.sidebar.clear_signal.connect(self._on_clear)
+        self.sidebar.characters_signal.connect(self._on_load_characters)
         self.sidebar.recent_click.connect(self._on_file_selected)
         splitter.addWidget(self.sidebar)
 
@@ -913,6 +1155,7 @@ class SaveViewer(QMainWindow):
             return
 
         self.file_path = path
+        self._ext_char_count = 0
         try:
             self.sf = parse_save(path)
             self._update_all()
@@ -939,10 +1182,11 @@ class SaveViewer(QMainWindow):
     def _on_clear(self):
         self.sf = None
         self.file_path = None
+        self._ext_char_count = 0
         self._update_all()
         self.statusBar().showMessage("Ready. Drop a .save file to begin.")
 
-    # ── Export ──────────────────────────────────────────
+    # ── Character file loading ─────────────────────────────
 
     def _on_export_json(self):
         if not self.sf:
@@ -1059,7 +1303,7 @@ class SaveViewer(QMainWindow):
             # but submarine position is in gamesession metadata.
             # We'll center the map around the campaign locations.
             pass
-        self.map_widget.set_data(sf.locations, sub_pos)
+        self.map_widget.set_data(sf.locations, sub_pos, sf.missions)
 
         self.campaign_widget.set_data(sf)
         self.missions_widget.set_data(sf.missions)
@@ -1201,6 +1445,10 @@ def main() -> None:
     import sys
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
+    # Set app-level icon (taskbar on Windows)
+    icon_path = Path(__file__).resolve().parent.parent / "assets" / "app_icon.ico"
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
     window = SaveViewer()
     window.show()
     sys.exit(app.exec())
