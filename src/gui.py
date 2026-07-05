@@ -1188,6 +1188,65 @@ class SaveViewer(QMainWindow):
 
     # ── Character file loading ─────────────────────────────
 
+    def _on_load_characters(self):
+        """Load characters from one or more external XML/character data files."""
+        default_dir = str(
+            Path.home() / "AppData" / "LocalLow" / "Eyefish" / "Barotrauma" / "saves"
+        )
+        filepaths, _ = QFileDialog.getOpenFileNames(
+            self,
+            "Load Character Files",
+            default_dir,
+            "Character files (*.xml *.dat);;All files (*.*)",
+        )
+        if not filepaths:
+            return
+
+        total = 0
+        failed: list[str] = []
+        for fp in filepaths:
+            chars = self._load_single_character_file(fp)
+            if chars:
+                total += len(chars)
+                if self.sf:
+                    self.sf.characters.extend(chars)
+                else:
+                    # No save file loaded – create a thin SaveFile to hold them
+                    if self.sf is None:
+                        self.sf = SaveFile(
+                            path=Path(fp),
+                            original_size=0,
+                            decompressed_size=0,
+                            characters=chars,
+                        )
+                self._ext_char_count += 1
+            else:
+                failed.append(Path(fp).name)
+
+        if self.sf:
+            self._update_all()
+
+        # Status bar message
+        msg_parts = [f"Loaded {total} characters from {self._ext_char_count} file(s)"]
+        if failed:
+            msg_parts.append(f"{len(failed)} file(s) had no usable characters")
+        self.statusBar().showMessage(" | ".join(msg_parts))
+
+    @staticmethod
+    def _load_single_character_file(filepath: str) -> list[Character]:
+        """Try parse_character_data first (CharacterCampaignData), fall back
+        to parse_characters_from_xml for standalone <Character> XML."""
+        chars = parse_character_data(filepath)
+        if chars:
+            return chars
+        try:
+            xml_text = Path(filepath).read_text(encoding="utf-8", errors="replace")
+            return parse_characters_from_xml(xml_text, status="Loaded")
+        except Exception:
+            return []
+
+    # ── Export ────────
+
     def _on_export_json(self):
         if not self.sf:
             return
@@ -1283,7 +1342,9 @@ class SaveViewer(QMainWindow):
                  f"  Hulls: {len(sf.hulls)} | Structures: {len(sf.structures)}\n"
                  f"  Items: {len(sf.items)}\n"
                  f"  Locations: {len(sf.locations)}\n"
-                 f"  Missions: {len(sf.missions)}")
+                 f"  Missions: {len(sf.missions)}"
+                 + (f"\n  + Loaded from {self._ext_char_count} character file(s)"
+                    if self._ext_char_count else ""))
         self.sidebar.update_stats(stats)
 
     def _refresh_tables(self):
