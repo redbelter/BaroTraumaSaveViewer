@@ -113,6 +113,7 @@ class SaveFile:
     missions: list[Mission] = field(default_factory=list)
     campaign_settings: Optional[CampaignSettings] = None
     raw_xml: Optional[str] = None
+    sub_position: Optional[tuple[float, float]] = None
 
 
 def item_type_from_identifier(identifier: str) -> str:

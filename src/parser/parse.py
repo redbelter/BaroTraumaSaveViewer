@@ -34,6 +34,17 @@ def _int_attr(elem: ET.Element, attr: str, default: int = 0) -> int:
         return default
 
 
+def _parse_position(text: str) -> tuple[float, float] | None:
+    """Parse 'x,y' or 'x, y' into float tuple."""
+    try:
+        parts = text.strip().replace(" ", "").split(",")
+        if len(parts) == 2:
+            return float(parts[0]), float(parts[1])
+    except (ValueError, AttributeError):
+        pass
+    return None
+
+
 def parse_submarine(xml_str: str) -> SubmarineInfo:
     root = ET.fromstring(xml_str)
     return SubmarineInfo(
@@ -210,6 +221,12 @@ def parse_campaign(xml_str: str, sf: SaveFile) -> None:
         for k, v in campaign.attrib.items():
             if k not in ("MaxMissionCount", "MaxMissionAttempts"):
                 sf.campaign_settings.extra[k] = v
+        # Sub position can be in campaignsettings text or as position attr
+        sub_txt = campaign.text or campaign.get("position")
+        if sub_txt and sub_txt.strip():
+            coords = _parse_position(sub_txt.strip())
+            if coords:
+                sf.sub_position = coords
 
     # Locations from map
     map_elem = root.find(".//map")
@@ -309,6 +326,16 @@ def parse_campaign(xml_str: str, sf: SaveFile) -> None:
             else:
                 dest_idx = None
             
+            # Parse mission origin from metadata
+            origin_str = mdata.get("origin")
+            if origin_str is not None:
+                try:
+                    origin_idx = int(origin_str)
+                except (ValueError, TypeError):
+                    origin_idx = None
+            else:
+                origin_idx = None
+    
             # Find location name from destination index
             if dest_idx is not None and dest_idx in loc_by_index:
                 loc = loc_by_index[dest_idx]
@@ -317,23 +344,23 @@ def parse_campaign(xml_str: str, sf: SaveFile) -> None:
             else:
                 loc_name = 'Unknown'
                 mission_type = 'Unknown'
-            
+    
             # Parse selected
             selected_str = mdata.get("selected", "false")
             selected = selected_str.lower() == "true" if selected_str else False
-            
+    
             # Parse times attempted
             try:
                 times_attempted = int(mdata.get("timesattempted", "0"))
             except (ValueError, TypeError):
                 times_attempted = 0
-            
+    
             sf.missions.append(Mission(
                 prefab_id=prefab_id,
                 location=loc_name,
                 mission_type=mission_type,
                 destination_index=dest_idx,
-                origin_index=None,
+                origin_index=origin_idx,
                 times_attempted=times_attempted,
                 selected=selected,
             ))
@@ -397,5 +424,5 @@ def parse_character_data(xml_src: str) -> list[Character]:
             ))
         return chars
     except Exception as e:
-        print(f"Warning: Could not parse {filepath}: {e}")
+        print(f"Warning: Could not parse character data: {e}")
         return []

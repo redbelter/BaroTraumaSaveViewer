@@ -1356,15 +1356,8 @@ class SaveViewer(QMainWindow):
         self.hulls_widget.set_data(sf.hulls)
         self.items_widget.set_data(sf.items)
 
-        # Map: pass locations and submarine position if available
-        sub_pos = None
-        if sf.submarine.dimensions and sf.submarine.dimensions != "Unknown":
-            # Submarine position isn't stored in submarine info;
-            # characters may have positions on the world map,
-            # but submarine position is in gamesession metadata.
-            # We'll center the map around the campaign locations.
-            pass
-        self.map_widget.set_data(sf.locations, sub_pos, sf.missions)
+        # Map: pass locations, submarine position, and missions
+        self.map_widget.set_data(sf.locations, sf.sub_position, sf.missions)
 
         self.campaign_widget.set_data(sf)
         self.missions_widget.set_data(sf.missions)
