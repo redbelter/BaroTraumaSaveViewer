@@ -22,7 +22,7 @@ from PySide6.QtGui import (
 )
 
 try:
-    from parser.data import SaveFile, Character, Item, Hull, Mission, Location
+    from parser.data import SaveFile, Character, Item, Hull, Mission, Location, Gap
     from parser.decode import parse_save
     from parser.parse import parse_character_data, parse_characters_from_xml
 except ImportError:
@@ -985,6 +985,114 @@ class MapWidget(QWidget):
         event.accept()
 
 
+# ─── Ship Layout Widget ──
+
+HULL_COLORS = {
+    "hull": QColor(80, 160, 220),
+    "wall": QColor(150, 150, 170),
+    "door": QColor(220, 180, 60),
+    "tank": QColor(60, 180, 160),
+    "conveyor": QColor(120, 120, 140),
+    "pipe": QColor(140, 120, 160),
+    "electrical": QColor(200, 170, 80),
+}
+
+
+class ShipLayoutWidget(QWidget):
+    """Submarine interior layout from structures/hulls/gaps."""
+
+    def __init__(self):
+        super().__init__()
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(4, 4, 4, 4)
+        self.scene = QGraphicsScene(self)
+        self.view = QGraphicsView(self.scene)
+        self.view.setRenderHints(QPainter.Antialiasing)
+        self.view.setDragMode(QGraphicsView.ScrollHandDrag)
+        self.view.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.view.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.view.setStyleSheet("""
+            QGraphicsView { background: #11131c; border: 1px solid #45475a; }
+        """)
+        self.layout.addWidget(self.view)
+        self._info = QLabel("")
+        self._info.setStyleSheet("color:#888; font-size:9pt; padding:3px;")
+        self._info.setAlignment(Qt.AlignRight)
+        self.layout.addWidget(self._info)
+
+    def _type_color(self, stype: str) -> QColor:
+        sl = stype.lower()
+        for key, col in HULL_COLORS.items():
+            if key in sl:
+                return col
+        return QColor(100, 110, 130)
+
+    def _parse_rect(self, s: str):
+        try:
+            p = s.replace(" ", "").split(",")
+            if len(p) >= 4:
+                return float(p[0]), float(p[1]), float(p[2]), float(p[3])
+        except Exception:
+            pass
+        return None
+
+    def set_data(
+        self,
+        hulls: list[Hull],
+        structures: list[Structure],
+        gaps: list[Gap],
+        items: list[Item],
+    ):
+        self.scene.clear()
+        bg = self.scene.addRect(-5000, -5000, 10000, 10000)
+        bg.setPen(Qt.NoPen)
+        bg.setBrush(QBrush(QColor("#11131c")))
+        grid_pen = QPen(QColor("#ffffff08"))
+        for i in range(-5000, 5001, 200):
+            self.scene.addLine(i, -5000, i, 5000, grid_pen)
+            self.scene.addLine(-5000, i, 5000, i, grid_pen)
+        axis_pen = QPen(QColor("#ffffff18"))
+        self.scene.addLine(-5000, 0, 5000, 0, axis_pen)
+        self.scene.addLine(0, -5000, 0, 5000, axis_pen)
+        total = 0
+        # Hulls — drawn as simple rects (hull rects usually not parsed well, skip if no pos)
+        # Structures — main interior content
+        for s in structures:
+            r = self._parse_rect(s.position)
+            if r is None:
+                continue
+            x, y, w, h = r
+            col = self._type_color(s.struct_type)
+            rect = self.scene.addRect(x, y, w, h)
+            rect.setPen(QPen(col, 0.7))
+            rect.setBrush(QBrush(QColor(col.red(), col.green(), col.blue(), 18)))
+            rect.setToolTip(f"{s.name}\n{w}×{h}")
+            total += 1
+        # Items
+        for item in items:
+            pt = None
+            try:
+                p = item.position.replace(" ", "").split(",")
+                if len(p) >= 2:
+                    pt = float(p[0]), float(p[1])
+            except Exception:
+                pass
+            if pt is None:
+                continue
+            dot = self.scene.addEllipse(pt[0] - 2, pt[1] - 2, 4, 4)
+            dot.setPen(Qt.NoPen)
+            dot.setBrush(QBrush(QColor(180, 180, 200, 100)))
+            dot.setToolTip(f"{item.identifier}\n{item.position}")
+            total += 1
+        # Fit
+        sc_items = self.scene.items()
+        if len(sc_items) > 1:  # bg + stuff
+            brect = self.scene.itemsBoundingRect()
+            pad = 50
+            self.view.fitInView(brect.adjusted(-pad, -pad, pad, pad), Qt.KeepAspectRatio)
+        self._info.setText(f"{len(structures)} structs · {len(items)} items · {len(hulls)} hulls")
+
+
 # ─── About Dialog ────────────────────────────────────────────────
 
 class AboutDialog(QDialog):
@@ -1062,6 +1170,7 @@ class SaveViewer(QMainWindow):
         self.hulls_widget = HullsWidget()
         self.items_widget = ItemsWidget()
         self.map_widget = MapWidget()
+        self.ship_widget = ShipLayoutWidget()
         self.campaign_widget = CampaignWidget()
         self.missions_widget = MissionsWidget()
         self.xml_widget = RawXmlWidget()
@@ -1071,6 +1180,7 @@ class SaveViewer(QMainWindow):
         self.tabs.addTab(self.hulls_widget, "Hulls")
         self.tabs.addTab(self.items_widget, "Items")
         self.tabs.addTab(self.map_widget, "Map")
+        self.tabs.addTab(self.ship_widget, "Ship Layout")
         self.tabs.addTab(self.campaign_widget, "Campaign")
         self.tabs.addTab(self.missions_widget, "Missions")
         self.tabs.addTab(self.xml_widget, "Raw XML")
@@ -1319,6 +1429,7 @@ class SaveViewer(QMainWindow):
         self.hulls_widget.set_data([])
         self.items_widget.set_data([])
         self.map_widget.set_data([])
+        self.ship_widget.set_data([], [], [], [])
         self.campaign_widget.set_data(SaveFile(path=Path(".")))
         self.missions_widget.set_data([])
         self.xml_widget.set_data(None)
@@ -1357,6 +1468,7 @@ class SaveViewer(QMainWindow):
         self.hulls_widget.set_data(sf.hulls)
         self.items_widget.set_data(sf.items)
         self.map_widget.set_data(sf.locations, sf.sub_position, sf.missions)
+        self.ship_widget.set_data(sf.hulls, sf.structures, sf.gaps, sf.items)
         self.campaign_widget.set_data(sf)
         self.missions_widget.set_data(sf.missions)
         self.xml_widget.set_data(sf.raw_xml)

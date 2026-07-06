@@ -294,23 +294,25 @@ def parse_campaign(xml_str: str, sf: SaveFile) -> None:
         # Extract all campaign metadata for mission data
         mission_data: dict[str, dict] = {}
         mission_prefabs: list[str] = []
+        campaign_meta: dict[str, str] = {}
 
         if metadata is not None:
             for data_elem in metadata.findall(".//Data"):
                 key = data_elem.get("key", "")
                 value = data_elem.get("value", "")
-                # Sub current location: campaign.location.id = location_index
-                if key == "campaign.location.id" and sf.sub_position is None:
-                    try:
-                        loc_idx = int(value)
-                        for loc in sf.locations:
-                            if loc.index == loc_idx:
-                                parsed = _parse_position(loc.position)
-                                if parsed:
-                                    sf.sub_position = parsed
-                                break
-                    except (ValueError, TypeError):
-                        pass
+                if key.startswith("campaign."):
+                    campaign_meta[key] = value
+                    if key == "campaign.location.id" and sf.sub_position is None:
+                        try:
+                            loc_idx = int(value)
+                            for loc in sf.locations:
+                                if loc.index == loc_idx:
+                                    c = _parse_position(loc.position)
+                                    if c:
+                                        sf.sub_position = c
+                                    break
+                        except (ValueError, TypeError):
+                            pass
                 # Mission metadata keys look like "mission.{prefab_id}.{field}"
                 if key.startswith("mission."):
                     parts = key.split(".", 2)
