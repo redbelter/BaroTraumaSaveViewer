@@ -100,7 +100,7 @@ def parse_save(path: Path) -> SaveFile:
     # Categorize files
     gamesession_xml = None
     submarine_files: list[dict] = []
-    char_data_file: str | None = None
+    char_data_file: dict | None = None
 
     for f in raw_files:
         if f["decompressed"] is None:
@@ -111,7 +111,7 @@ def parse_save(path: Path) -> SaveFile:
         elif name_lower.endswith(".sub"):
             submarine_files.append(f)
         elif "characterdata" in name_lower:
-            char_data_file = f["name"]
+            char_data_file = f
 
     # Parse gamesession.xml for campaign data (characters, missions, locations)
     if gamesession_xml is not None:
@@ -161,6 +161,17 @@ def parse_save(path: Path) -> SaveFile:
     # If no characters found, look for them in gamesession
     if not sf.characters and gamesession_xml:
         sf.characters = parse_characters_from_xml(gamesession_xml["decompressed"].decode("utf-8", errors="ignore"), "Campaign")
+
+    # Parse CharacterData.xml (campaign characters with full details)
+    if char_data_file is not None and char_data_file["decompressed"] is not None:
+        xml_data = char_data_file["decompressed"].decode("utf-8", errors="ignore")
+        campaign_chars = parse_character_data(xml_data)
+        # Merge: avoid duplicates by id
+        existing_ids = {c.id for c in sf.characters}
+        for c in campaign_chars:
+            if c.id not in existing_ids:
+                sf.characters.append(c)
+                existing_ids.add(c.id)
 
     sf.raw_xml = gamesession_xml["decompressed"].decode("utf-8", errors="ignore") if gamesession_xml else ""
     return sf

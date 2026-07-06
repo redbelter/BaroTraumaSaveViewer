@@ -367,11 +367,13 @@ def parse_campaign(xml_str: str, sf: SaveFile) -> None:
                     ))
 
 
-def parse_character_data(filepath: str) -> list[Character]:
-    """Parse character data from separate CharacterData.xml file."""
+def parse_character_data(xml_src: str) -> list[Character]:
+    """Parse character data from CharacterData.xml filepath or raw XML string."""
     try:
-        tree = ET.parse(filepath)
-        root = tree.getroot()
+        if xml_src.strip().startswith("<"):
+            root = ET.fromstring(xml_src)
+        else:
+            root = ET.parse(xml_src).getroot()
         chars: list[Character] = []
         for campaign in root.findall(".//CharacterCampaignData"):
             char_elem = campaign.find(".//Character")
