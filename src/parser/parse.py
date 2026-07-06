@@ -221,7 +221,7 @@ def parse_campaign(xml_str: str, sf: SaveFile) -> None:
         for k, v in campaign.attrib.items():
             if k not in ("MaxMissionCount", "MaxMissionAttempts"):
                 sf.campaign_settings.extra[k] = v
-        # Sub position can be in campaignsettings text or as position attr
+        # Sub position: campaignsettings text, or position attr, or from campaign.location.id in metadata
         sub_txt = campaign.text or campaign.get("position")
         if sub_txt and sub_txt.strip():
             coords = _parse_position(sub_txt.strip())
@@ -291,14 +291,26 @@ def parse_campaign(xml_str: str, sf: SaveFile) -> None:
     if mpc is not None:
         metadata = mpc.find('Metadata')
         
-        # Extract all mission data from Metadata entries
-        mission_data: dict[str, dict] = {}  # prefab_id -> metadata dict
+        # Extract all campaign metadata for mission data
+        mission_data: dict[str, dict] = {}
         mission_prefabs: list[str] = []
-        
+
         if metadata is not None:
             for data_elem in metadata.findall(".//Data"):
                 key = data_elem.get("key", "")
                 value = data_elem.get("value", "")
+                # Sub current location: campaign.location.id = location_index
+                if key == "campaign.location.id" and sf.sub_position is None:
+                    try:
+                        loc_idx = int(value)
+                        for loc in sf.locations:
+                            if loc.index == loc_idx:
+                                parsed = _parse_position(loc.position)
+                                if parsed:
+                                    sf.sub_position = parsed
+                                break
+                    except (ValueError, TypeError):
+                        pass
                 # Mission metadata keys look like "mission.{prefab_id}.{field}"
                 if key.startswith("mission."):
                     parts = key.split(".", 2)

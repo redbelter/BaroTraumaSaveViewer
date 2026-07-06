@@ -967,11 +967,12 @@ class MapWidget(QWidget):
             return
         xs = [x for x, y, *_ in self._items]
         ys = [y for x, y, *_ in self._items]
-        margin = 60
+        span_x = max(xs) - min(xs)
+        span_y = max(ys) - min(ys)
+        margin = max(span_x, span_y) * 0.1  # 10% margin relative to span
         rect = QRectF(
             min(xs) - margin, min(ys) - margin,
-            (max(xs) - min(xs)) + margin * 2,
-            (max(ys) - min(ys)) + margin * 2,
+            span_x + margin * 2, span_y + margin * 2,
         )
         self.view.setSceneRect(rect)
         self.view.fitInView(rect, Qt.KeepAspectRatio)
@@ -1355,13 +1356,13 @@ class SaveViewer(QMainWindow):
         self.sub_widget.set_data(sf.submarine, sf.original_size, sf.decompressed_size)
         self.hulls_widget.set_data(sf.hulls)
         self.items_widget.set_data(sf.items)
-
-        # Map: pass locations, submarine position, and missions
         self.map_widget.set_data(sf.locations, sf.sub_position, sf.missions)
-
         self.campaign_widget.set_data(sf)
         self.missions_widget.set_data(sf.missions)
         self.xml_widget.set_data(sf.raw_xml)
+        self.setWindowTitle(
+            f"{sf.submarine.name} — BaroTrauma Save Viewer ({Path(sf.path).name})"
+        )
 
     def _on_about(self):
         dlg = AboutDialog(self)
