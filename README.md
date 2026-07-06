@@ -159,6 +159,36 @@ Characters are stored in duffelbag items with the following data:
 }
 ```
 
+## 📦 Distribution (Windows Standalone .exe)
+
+Build a Windows executable that runs without Python installed:
+
+```bash
+# One-time setup
+.venv\Scripts\activate
+pip install pyinstaller
+
+# Build (produces dist\reverse-baro\)
+pyinstaller --clean reverse-baro.spec
+# or: build.bat
+```
+
+The output folder `dist\reverse-baro\` contains `reverse-baro.exe` plus all
+dependencies (~112 MB). Double-click the `.exe` to run. Zip the entire folder
+to share with friends — no Python needed.
+
+### Why --onedir (not --onefile)
+
+| Factor | --onedir (used) | --onefile |
+|---|---|---|
+| Startup | Instant | Slow (extracts to %TEMP% on each run) |
+| AV false positives | Rare | Common (self-extracting archive) |
+| Qt plugin resolution | Clean (built-in PySide6 hooks) | Fragile (temp paths break qwindows.dll) |
+| Bundle size | ~112 MB | ~160 MB |
+
+Nuitka was considered but requires GCC/MinGW and 30+ min compile times.
+PyInstaller --onedir gives the best risk/cost ratio for a 1500-line app.
+
 ## 📝 License
 
 This project is licensed under the MIT License - see the [LICENSE](../LICENSE) file for details.
