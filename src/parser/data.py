@@ -25,11 +25,20 @@ class Character:
     job: str
     condition: str = "Unknown"
     position: str = ""
-    status: str = "Unknown"  # "Living", "Campaign", "In Duffelbag", "Unknown"
+    status: str = "Unknown"
     permanently_dead: bool = False
     destination_index: Optional[int] = None
     tags: str = ""
     parent_id: str = ""
+    species: str = ""
+    personality: str = ""
+    skills: dict = field(default_factory=dict)
+    talents: list = field(default_factory=list)
+    wallet_balance: int = 0
+    salary: int = 0
+    experience: int = 0
+    afflictions: list = field(default_factory=list)
+    missions_completed: int = 0
 
 
 @dataclass

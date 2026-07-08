@@ -421,8 +421,8 @@ class TestEndToEnd:
 
     def test_complete_data_counts(self, parsed_save: SaveFile):
         """Verify we get expected data counts from grav.save."""
-        assert parsed_save.submarine.name == "Camel"  # Actual submarine in grav.save
-        assert parsed_save.submarine.tier == "1"
+        assert parsed_save.submarine.name == "Orca2"  # Active sub from gamesession.xml
+        assert parsed_save.submarine.tier == "2"
         assert len(parsed_save.hulls) > 0, f"Expected hulls, got {len(parsed_save.hulls)}"
         assert len(parsed_save.structures) > 0, f"Expected structures, got {len(parsed_save.structures)}"
         assert len(parsed_save.gaps) > 0, f"Expected gaps, got {len(parsed_save.gaps)}"
@@ -464,7 +464,7 @@ class TestEndToEnd:
         }
         json_str = json.dumps(data, indent=2, default=str)
         parsed_back = json.loads(json_str)
-        assert parsed_back["submarine"]["name"] == "Camel"
+        assert parsed_back["submarine"]["name"] == "Orca2"
         assert len(parsed_back["characters"]) > 0
         assert len(parsed_back["missions"]) > 0
 

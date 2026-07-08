@@ -113,14 +113,27 @@ def parse_save(path: Path) -> SaveFile:
         elif "characterdata" in name_lower:
             char_data_file = f
 
-    # Parse gamesession.xml for campaign data (characters, missions, locations)
+    # Identify the active submarine from gamesession.xml
+    active_submarine_name: str | None = None
     if gamesession_xml is not None:
         xml_str = gamesession_xml["decompressed"].decode("utf-8", errors="ignore")
         raw_xml = xml_str
         parse_campaign(xml_str, sf)
         sf.raw_xml = raw_xml
+        # Read the 'submarine' attribute from <Gamesession> to find the active sub
+        try:
+            import xml.etree.ElementTree as ET
+            gs_root = ET.fromstring(xml_str)
+            active_submarine_name = gs_root.get("submarine")
+            if active_submarine_name:
+                print(f"Active submarine: {active_submarine_name}", file=sys.stderr)
+        except Exception:
+            pass
 
-    # Parse all .sub files for hulls, structures, items, gaps
+    # Parse .sub files: prioritize the active submarine if identified
+    # Template subs have noitems="true"; the active sub has noitems="false"
+    # Process the active sub FIRST so its data takes priority for submarine info
+    processed_active = False
     for sub_file in submarine_files:
         if sub_file["decompressed"] is None:
             continue
@@ -131,9 +144,21 @@ def parse_save(path: Path) -> SaveFile:
             if root.tag != "Submarine":
                 continue
 
-            # Parse submarine info
-            if sf.submarine.name == "Unknown":
+            sub_name = root.get("name")
+            is_active = (active_submarine_name and sub_name == active_submarine_name)
+            noitems = root.get("noitems", "false").lower() == "true"
+
+            # If we have an active sub identifier, only parse that sub's full data
+            # Template subs (noitems=true) should not contribute hull/struct/gap data
+            if active_submarine_name and not is_active:
+                # This is a non-active sub — skip it (it's just a template reference)
+                continue
+
+            # Parse submarine info (from the active sub, or first if no active identified)
+            if not processed_active:
                 sf.submarine = parse_submarine(xml_str)
+                if is_active:
+                    processed_active = True
 
             # Parse hulls (may be bare <Hull ID="..."/> with no extra attributes)
             for h in parse_hulls_from_xml(xml_str):
@@ -151,7 +176,7 @@ def parse_save(path: Path) -> SaveFile:
                     sf.gaps.append(g)
 
             # Parse items (skip if noitems="true")
-            if root.get("noitems", "false").lower() != "true":
+            if noitems is False:
                 for i in parse_items_from_xml(xml_str):
                     if not any(i.id == x.id for x in sf.items):
                         sf.items.append(i)

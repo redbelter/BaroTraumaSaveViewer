@@ -35,7 +35,6 @@ def _int_attr(elem: ET.Element, attr: str, default: int = 0) -> int:
 
 
 def _parse_position(text: str) -> tuple[float, float] | None:
-    """Parse 'x,y' or 'x, y' into float tuple."""
     try:
         parts = text.strip().replace(" ", "").split(",")
         if len(parts) == 2:
@@ -43,6 +42,58 @@ def _parse_position(text: str) -> tuple[float, float] | None:
     except (ValueError, AttributeError):
         pass
     return None
+
+
+def _extract_char_details(elem: ET.Element) -> dict:
+    """Extract rich character details from a <Character> XML element."""
+    d = {
+        "species": elem.get("speciesname", ""),
+        "personality": elem.get("personality", ""),
+        "skills": {},
+        "talents": [],
+        "wallet_balance": 0,
+        "salary": 0,
+        "experience": 0,
+        "afflictions": [],
+        "missions_completed": 0,
+    }
+    try:
+        d["salary"] = _int_attr(elem, "salary")
+        d["experience"] = _int_attr(elem, "experiencepoints")
+        d["missions_completed"] = _int_attr(elem, "missionscompletedsincedeath")
+    except (ValueError, TypeError):
+        pass
+    job_elem = elem.find(".//job")
+    if job_elem is not None:
+        for skill in job_elem.findall(".//skill"):
+            try:
+                d["skills"][skill.get("identifier", "")] = float(skill.get("level", "0"))
+            except (ValueError, TypeError):
+                pass
+    talents_elem = elem.find(".//Talents")
+    if talents_elem is not None:
+        for t in talents_elem.findall(".//Talent"):
+            identifier = t.get("identifier", "")
+            if identifier:
+                d["talents"].append(identifier)
+    health_elem = elem.find(".//health")
+    if health_elem is not None:
+        for a in health_elem.findall(".//Affliction"):
+            identifier = a.get("identifier", "")
+            if identifier and identifier not in d["talents"]:
+                d["afflictions"].append(identifier)
+        for limb in health_elem.findall(".//LimbHealth"):
+            for a in limb.findall(".//Affliction"):
+                identifier = a.get("identifier", "")
+                if identifier and identifier not in d["afflictions"]:
+                    d["afflictions"].append(identifier)
+    wallet_elem = elem.find(".//Wallet")
+    if wallet_elem is not None:
+        try:
+            d["wallet_balance"] = _int_attr(wallet_elem, "balance")
+        except (ValueError, TypeError):
+            pass
+    return d
 
 
 def parse_submarine(xml_str: str) -> SubmarineInfo:
@@ -84,7 +135,7 @@ def parse_characters_from_xml(xml_str: str, status: str = "In Duffelbag") -> lis
                 condition = f"{total / limb_count:.2f}%"
         
         position = elem.get("rect", "")
-        
+        details = _extract_char_details(elem)
         chars.append(Character(
             id=char_id,
             name=name,
@@ -92,6 +143,7 @@ def parse_characters_from_xml(xml_str: str, status: str = "In Duffelbag") -> lis
             condition=condition,
             position=position,
             status=status,
+            **details,
         ))
     return chars
 
@@ -267,6 +319,7 @@ def parse_campaign(xml_str: str, sf: SaveFile) -> None:
                     total += float(limb.get("value", "100"))
                 condition = f"{total / limb_count:.2f}%"
         
+        details = _extract_char_details(char)
         sf.characters.append(Character(
             id=char.get("id", "0"),
             name=char.get("name", "Unknown"),
@@ -280,6 +333,7 @@ def parse_campaign(xml_str: str, sf: SaveFile) -> None:
                 if char.get("destinationindex")
                 else None
             ),
+            **details,
         ))
 
     # Missions - in Barotrauma, missions are stored as <Mission> elements within <Metadata>
@@ -411,6 +465,7 @@ def parse_campaign(xml_str: str, sf: SaveFile) -> None:
 def parse_character_data(xml_src: str) -> list[Character]:
     """Parse character data from CharacterData.xml filepath or raw XML string."""
     try:
+        xml_src = xml_src.lstrip("\ufeff")
         if xml_src.strip().startswith("<"):
             root = ET.fromstring(xml_src)
         else:
@@ -427,15 +482,19 @@ def parse_character_data(xml_src: str) -> list[Character]:
                 continue
             job_elem = char_elem.find(".//job")
             job_name = job_elem.get("name", "Unknown") if job_elem is not None else "Unknown"
-            chars.append(Character(
-                id=campaign.get("name", "Unknown"),
-                name=char_elem.get("name", "Unknown"),
-                job=job_name,
-                condition="Alive",
-                position="Living Crew",
-                status="Living",
-                permanently_dead=False,
-            ))
+            details = _extract_char_details(char_elem)
+            chars.append(
+                Character(
+                    id=campaign.get("name", "Unknown"),
+                    name=char_elem.get("name", "Unknown"),
+                    job=job_name,
+                    condition="Alive",
+                    position="Living Crew",
+                    status="Living",
+                    permanently_dead=False,
+                    **details,
+                )
+            )
         return chars
     except Exception as e:
         print(f"Warning: Could not parse character data: {e}")

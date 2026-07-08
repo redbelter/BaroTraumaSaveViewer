@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QGroupBox, QMenu, QDialog, QScrollArea,
     QFrame, QAbstractItemView, QGraphicsView, QGraphicsScene,
 )
-from PySide6.QtCore import Qt, Signal, QRectF
+from PySide6.QtCore import Qt, QPoint, QPointF, Signal, QRectF
 from PySide6.QtGui import (
     QKeySequence, QAction, QColor, QFont, QPen, QBrush,
     QPolygonF, QWheelEvent, QPainter, QIcon,
@@ -225,10 +225,13 @@ class Sidebar(QWidget):
 # ─── Characters Widget ───────────────────────────────────────────
 
 class CharactersWidget(QWidget):
+    """Character list with detail panel on row selection."""
+
     def __init__(self):
         super().__init__()
         self.layout = QVBoxLayout(self)
 
+        # toolbar
         toolbar = QHBoxLayout()
         self.filter_combo = QComboBox()
         self.filter_combo.setMinimumWidth(140)
@@ -248,6 +251,7 @@ class CharactersWidget(QWidget):
         toolbar.addStretch()
         self.layout.addLayout(toolbar)
 
+        # table
         self.table = QTableWidget()
         self.table.setColumnCount(4)
         self.table.setHorizontalHeaderLabels(["ID", "Name", "Job", "HP", "Status"])
@@ -259,10 +263,25 @@ class CharactersWidget(QWidget):
         self.table.setColumnWidth(4, 100)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.selectionModel().selectionChanged.connect(self._on_selection)
         self.layout.addWidget(self.table)
+
+        # detail panel
+        df = QFrame()
+        df.setStyleSheet(
+            "QFrame { background: #181a24; border: 1px solid #45475a; border-radius: 4px; padding: 4px; }"
+        )
+        dlay = QVBoxLayout(df)
+        dlay.setContentsMargins(8, 8, 8, 8)
+        self._dl = QLabel("Select a character")
+        self._dl.setStyleSheet("color: #cdd6f4; font-size: 10pt;")
+        self._dl.setWordWrap(True)
+        dlay.addWidget(self._dl)
+        self.layout.addWidget(df)
 
         self._characters: list[Character] = []
 
+    # data
     def set_data(self, characters: list[Character]):
         self._characters = characters
         job_types = sorted({"All", *{c.job for c in characters}})
@@ -280,14 +299,12 @@ class CharactersWidget(QWidget):
     def _populate(self):
         job_filter = self.filter_combo.currentText()
         search = self.search_input.text().lower()
-
         filtered = [
             c for c in self._characters
             if (job_filter == "All" or c.job == job_filter)
             and (not search or search in c.name.lower())
         ]
         self.total_label.setText(f"{len(filtered)} / {len(self._characters)} total")
-
         self.table.setRowCount(len(filtered))
         for row, c in enumerate(filtered):
             self.table.setItem(row, 0, QTableWidgetItem(c.id))
@@ -305,6 +322,43 @@ class CharactersWidget(QWidget):
             status_item = QTableWidgetItem(_status_label(c))
             status_item.setForeground(_status_color(c))
             self.table.setItem(row, 4, status_item)
+
+    # skills bar
+    @staticmethod
+    def __bar(pct: float) -> str:
+        n = round(pct / 100 * 14)
+        return "\u2588" * n + "\u2591" * (14 - n)
+
+    # selection handler
+    def _on_selection(self):
+        sel = self.table.selectionModel().selection().indexes()
+        if not sel:
+            self._dl.setText("Select a character")
+            return
+        row = sel[0].row()
+        c = self._characters[row]
+        L: list[str] = []
+        if c.species:
+            L.append(f"{c.name} \u2014 {c.species} | {c.job}")
+        else:
+            L.append(f"{c.name} | {c.job}")
+        if c.personality:
+            L.append(f"  personality: {c.personality}")
+        L.append(f"  status: {_status_label(c)}  |  hp: {c.condition}")
+        if c.skills:
+            L.append("  skills")
+            L.extend(
+                f"    {s:<12} {self.__bar(min(v, 100))} {v:5.0f}"
+                for s, v in sorted(c.skills.items())
+            )
+        if c.talents:
+            L.append("  talents: " + ", ".join(c.talents))
+        if c.afflictions:
+            L.append("  afflictions: " + ", ".join(c.afflictions))
+        L.append(
+            f"  exp: {c.experience:,}  |  wallet: {c.wallet_balance}  |  missions: {c.missions_completed}"
+        )
+        self._dl.setText("\n".join(L))
 
 
 # ─── Submarine Widget ────────────────────────────────────────────
@@ -758,8 +812,8 @@ class MapWidget(QWidget):
         if submarine_pos:
             sx, sy = submarine_pos
             sub_shape = QPolygonF([
-                (sx, sy - 20), (sx - 14, sy + 10),
-                (sx, sy + 4), (sx + 14, sy + 10),
+                QPointF(sx, sy - 20), QPointF(sx - 14, sy + 10),
+                QPointF(sx, sy + 4), QPointF(sx + 14, sy + 10),
             ])
             sub_item = self.scene.addPolygon(sub_shape)
             sub_item.setBrush(QBrush(QColor(233, 69, 96)))
@@ -775,8 +829,16 @@ class MapWidget(QWidget):
         # Build legend
         self._build_legend()
 
-        # Fit view to all points
-        if self._items:
+        # Fit view: auto-zoom around submarine if available, else fit all
+        if submarine_pos and self._items:
+            sx, sy = submarine_pos
+            radius = 400
+            rect = QRectF(sx - radius, sy - radius, radius * 2, radius * 2)
+            # Don't setSceneRect — it locks bounds and breaks scroll.
+            # fitInView adjusts the transform without constraining the scene.
+            self._items_rect = rect
+            self.view.fitInView(rect, Qt.KeepAspectRatio)
+        elif self._items:
             self._fit_all()
         else:
             self.scene.setSceneRect(-1000, -1000, 2000, 2000)
@@ -1005,6 +1067,29 @@ class ShipLayoutWidget(QWidget):
         super().__init__()
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(4, 4, 4, 4)
+
+        # Toolbar: zoom controls
+        toolbar = QHBoxLayout()
+        toolbar.setContentsMargins(4, 4, 4, 4)
+
+        self._zoom_in_btn = QPushButton("+")
+        self._zoom_in_btn.setMaximumWidth(32)
+        self._zoom_in_btn.clicked.connect(self._zoom_in)
+        toolbar.addWidget(self._zoom_in_btn)
+
+        self._zoom_out_btn = QPushButton("-")
+        self._zoom_out_btn.setMaximumWidth(32)
+        self._zoom_out_btn.clicked.connect(self._zoom_out)
+        toolbar.addWidget(self._zoom_out_btn)
+
+        self._fit_btn = QPushButton("Fit")
+        self._fit_btn.setMaximumWidth(50)
+        self._fit_btn.clicked.connect(self._fit_all)
+        toolbar.addWidget(self._fit_btn)
+
+        toolbar.addStretch()
+        self.layout.addLayout(toolbar)
+
         self.scene = QGraphicsScene(self)
         self.view = QGraphicsView(self.scene)
         self.view.setRenderHints(QPainter.Antialiasing)
@@ -1014,12 +1099,76 @@ class ShipLayoutWidget(QWidget):
         self.view.setStyleSheet("""
             QGraphicsView { background: #11131c; border: 1px solid #45475a; }
         """)
+        self.view.viewport().installEventFilter(self)  # wheel events go to viewport, not the view
         self.layout.addWidget(self.view)
         self._info = QLabel("")
         self._info.setStyleSheet("color:#888; font-size:9pt; padding:3px;")
         self._info.setAlignment(Qt.AlignRight)
         self.layout.addWidget(self._info)
 
+        # click detail panel
+        ship_df = QFrame()
+        ship_df.setStyleSheet(
+            "QFrame { background: #181a24; border: 1px solid #45475a; border-radius: 4px; padding: 4px; }"
+        )
+        ship_dlay = QVBoxLayout(ship_df)
+        ship_dlay.setContentsMargins(8, 8, 8, 8)
+        self._ship_detail = QLabel("Click a structure, gap, or item for details")
+        self._ship_detail.setStyleSheet("color: #cdd6f4; font-size: 10pt;")
+        self._ship_detail.setWordWrap(True)
+        ship_dlay.addWidget(self._ship_detail)
+        self.layout.addWidget(ship_df)
+
+        self._prev_highlight = None  # (QGraphicsItem, QPen) tuple for un-highlighting
+
+    def _restore_prev_pen(self):
+        """Restore the original pen of the previously highlighted item."""
+        if self._prev_highlight is not None:
+            prev_item, orig_pen = self._prev_highlight
+            sc = prev_item.scene()
+            if sc is not None:  # still in scene
+                prev_item.setPen(orig_pen)
+            self._prev_highlight = None
+
+    def _zoom_in(self):
+        self.view.scale(1.4, 1.4)
+
+    def _zoom_out(self):
+        self.view.scale(0.7, 0.7)
+
+    def _fit_all(self):
+        sc_items = self.scene.items()
+        if len(sc_items) > 1:
+            brect = self.scene.itemsBoundingRect()
+            pad = 50
+            self.view.fitInView(brect.adjusted(-pad, -pad, pad, pad), Qt.KeepAspectRatio)
+
+    def eventFilter(self, obj, event):
+        if obj in (self.view, self.view.viewport()) and event.type() == event.Type.Wheel:
+            if not (event.modifiers() & Qt.ControlModifier):
+                factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
+                self.view.scale(factor, factor)
+                event.accept()
+                return True
+        # Double-click → show detail in panel + highlight item
+        # (single-click is needed for ScrollHandDrag panning, so we don't intercept it)
+        if obj in (self.view, self.view.viewport()) and event.type() == event.Type.MouseButtonDblClick:
+            if event.button() == Qt.LeftButton:
+                pos = event.pos()
+                scene_pos = self.view.mapToScene(pos)
+                item = self.view.itemAt(scene_pos.toPointF())
+                if item is not None and item.toolTip():
+                    self._restore_prev_pen()
+                    orig_pen = item.pen()
+                    item.setPen(QPen(QColor(255, 255, 255, 200), 3))
+                    self._prev_highlight = (item, orig_pen)
+                    tt = item.toolTip()
+                    parts = tt.split(" | ")
+                    self._ship_detail.setText("Selected: " + "  |  ".join(parts))
+                    event.accept()
+                    return True
+        return super().eventFilter(obj, event)
+    
     def _type_color(self, stype: str) -> QColor:
         sl = stype.lower()
         for key, col in HULL_COLORS.items():
@@ -1044,6 +1193,7 @@ class ShipLayoutWidget(QWidget):
         items: list[Item],
     ):
         self.scene.clear()
+        self._prev_highlight = None
         bg = self.scene.addRect(-5000, -5000, 10000, 10000)
         bg.setPen(Qt.NoPen)
         bg.setBrush(QBrush(QColor("#11131c")))
@@ -1066,7 +1216,20 @@ class ShipLayoutWidget(QWidget):
             rect = self.scene.addRect(x, y, w, h)
             rect.setPen(QPen(col, 0.7))
             rect.setBrush(QBrush(QColor(col.red(), col.green(), col.blue(), 18)))
-            rect.setToolTip(f"{s.name}\n{w}×{h}")
+            rect.setToolTip(f"{s.name} | pos: {x},{y} | size: {w},{h}")
+            rect.setAcceptHoverEvents(True)
+            total += 1
+        # Gaps
+        for gap in gaps:
+            r = self._parse_rect(gap.position)
+            if r is None:
+                continue
+            x, y, w, h = r
+            gap_rect = self.scene.addRect(x, y, w, h)
+            gap_rect.setPen(QPen(QColor(100, 100, 120, 80), 0.5))
+            gap_rect.setBrush(QBrush(QColor(100, 100, 120, 10)))
+            gap_rect.setToolTip(f"gap | pos: {x},{y} | size: {w},{h}")
+            gap_rect.setAcceptHoverEvents(True)
             total += 1
         # Items
         for item in items:
@@ -1082,15 +1245,13 @@ class ShipLayoutWidget(QWidget):
             dot = self.scene.addEllipse(pt[0] - 2, pt[1] - 2, 4, 4)
             dot.setPen(Qt.NoPen)
             dot.setBrush(QBrush(QColor(180, 180, 200, 100)))
-            dot.setToolTip(f"{item.identifier}\n{item.position}")
+            dot.setToolTip(f"{item.identifier} | pos: {pt[0]},{pt[1]}")
+            dot.setAcceptHoverEvents(True)
             total += 1
         # Fit
-        sc_items = self.scene.items()
-        if len(sc_items) > 1:  # bg + stuff
-            brect = self.scene.itemsBoundingRect()
-            pad = 50
-            self.view.fitInView(brect.adjusted(-pad, -pad, pad, pad), Qt.KeepAspectRatio)
+        self._fit_all()
         self._info.setText(f"{len(structures)} structs · {len(items)} items · {len(hulls)} hulls")
+        self._ship_detail.setText("Click a structure, gap, or item for details")
 
 
 # ─── About Dialog ────────────────────────────────────────────────
