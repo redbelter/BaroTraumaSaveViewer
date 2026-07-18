@@ -111,15 +111,18 @@ def cmd_compare(args: argparse.Namespace) -> None:
 
 def cmd_json(args: argparse.Namespace) -> None:
     """Export a save file to JSON."""
+    import sys, io
     paths = _resolve_paths(args.files)
     for path in paths:
         sf = load_and_decompress(path)
         data = _savefile_to_dict(sf)
+        output = json.dumps(data, indent=2, default=str).replace('\r', '')
         if args.output:
-            Path(args.output).write_text(json.dumps(data, indent=2, default=str))
+            Path(args.output).write_text(output)
             print(f"  Written to {args.output}")
         else:
-            print(json.dumps(data, indent=2, default=str))
+            # Write binary with Unix newlines to avoid Windows CRLF
+            sys.stdout.buffer.write((output + '\n').encode('utf-8'))
 
 
 def _savefile_to_dict(sf: SaveFile) -> dict:

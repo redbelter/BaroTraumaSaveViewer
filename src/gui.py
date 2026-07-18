@@ -1150,13 +1150,12 @@ class ShipLayoutWidget(QWidget):
                 self.view.scale(factor, factor)
                 event.accept()
                 return True
-        # Double-click → show detail in panel + highlight item
+        # Double-click -> show detail in panel + highlight item
         # (single-click is needed for ScrollHandDrag panning, so we don't intercept it)
         if obj in (self.view, self.view.viewport()) and event.type() == event.Type.MouseButtonDblClick:
             if event.button() == Qt.LeftButton:
-                pos = event.pos()
-                scene_pos = self.view.mapToScene(pos)
-                item = self.view.itemAt(scene_pos.toPointF())
+                pos = event.position().toPoint()
+                item = self.view.itemAt(pos)
                 if item is not None and item.toolTip():
                     self._restore_prev_pen()
                     orig_pen = item.pen()

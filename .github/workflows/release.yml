@@ -1,0 +1,66 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    name: Build and release ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Get tag version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "version=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "::error::Not a tag push"
+            exit 1
+          fi
+
+      - name: Install PyInstaller and dependencies
+        run: |
+          pip install --upgrade pip setuptools wheel
+          pip install pyside6>=6.6.0 pyinstaller
+
+      - name: Build executable (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          python -m PyInstaller --clean -y reverse-baro.spec
+          mv dist/reverse-baro dist/reverse-baro-${{ steps.version.outputs.version }}-win64
+
+      - name: Build executable (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          python -m PyInstaller --clean -y reverse-baro.spec
+          tar -czf reverse-baro-${{ steps.version.outputs.version }}-linux64.tar.gz -C dist reverse-baro
+
+      - name: Build executable (macOS)
+        if: matrix.os == 'macos-latest'
+        run: |
+          python -m PyInstaller --clean -y reverse-baro.spec
+          tar -czf reverse-baro-${{ steps.version.outputs.version }}-macos64.tar.gz -C dist reverse-baro
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/reverse-baro-${{ steps.version.outputs.version }}-win64/*
+            reverse-baro-${{ steps.version.outputs.version }}-linux64.tar.gz
+            reverse-baro-${{ steps.version.outputs.version }}-macos64.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
